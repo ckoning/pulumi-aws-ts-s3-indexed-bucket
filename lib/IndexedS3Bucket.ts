@@ -194,15 +194,17 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
     // Register this component with name pkg:index:StaticWebsite
     super('ckoning:pulumi-examples:IndexedS3Bucket', bucketName, {}, opts);
 
+    // Define resource names based on user provided bucket name
+    const tableName = `${bucketName}-index`;
+    const functionName = `${bucketName}-event-handler`;
+
     // Create the S3 bucket
     this.bucket = this.createBucket(bucketName);
 
     // Create DynamoDB table
-    const tableName = `${bucketName}-index`;
     this.table = this.createTable(tableName);
 
     // Create IAM role
-    const functionName = `${bucketName}-event-handler`;
     this.role = this.createRole(functionName, tableName, awsctx);
 
     // Register that we are done constructing the component and define outputs
