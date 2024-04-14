@@ -3,6 +3,9 @@ import * as aws from '@pulumi/aws';
 
 import { IndexedS3Bucket } from './lib/IndexedS3Bucket.js';
 
-const bucketName = 'crk-main-indexed-example';
+const bucketPrefix = 'crk-main-indexed-example';
 
-const site = new IndexedS3Bucket(bucketName);
+const indexedBucket = new IndexedS3Bucket(bucketPrefix);
+
+export const bucketName = indexedBucket.bucket.id;
+export const bucketArn = indexedBucket.bucket.arn;
