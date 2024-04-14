@@ -9,3 +9,5 @@ const indexedBucket = new IndexedS3Bucket(bucketPrefix);
 
 export const bucketName = indexedBucket.bucket.id;
 export const bucketArn = indexedBucket.bucket.arn;
+export const tableName = indexedBucket.table.name;
+export const tableArn = indexedBucket.table.arn;
