@@ -1,0 +1,12 @@
+name: pulumi-aws-ts-s3-indexed-bucket
+runtime:
+  name: nodejs
+  options:
+    # See https://github.com/TypeStrong/ts-node/issues/1007
+    nodeargs: "--loader ts-node/esm --no-warnings"
+description: A Pulumi resource implementing an S3 bucket whose content is indexed into a DynamoDB table
+template:
+  config:
+    aws:region:
+      description: The AWS region to deploy into
+      default: us-east-1
