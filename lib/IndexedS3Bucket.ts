@@ -89,7 +89,11 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
    * @param {pulumi.ComponentResourceOptions=} opts a `ComponentResource` configuration
    * @constructor
    */
-  constructor(bucketName: string, opts?: pulumi.ComponentResourceOptions) {
+  constructor(
+    bucketName: string,
+    awsctx: any,
+    opts?: pulumi.ComponentResourceOptions,
+  ) {
     // Register this component with name pkg:index:StaticWebsite
     super('ckoning:pulumi-examples:IndexedS3Bucket', bucketName, {}, opts);
 
