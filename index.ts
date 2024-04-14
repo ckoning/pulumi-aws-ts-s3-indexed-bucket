@@ -26,3 +26,4 @@ export const bucketName = indexedBucket.bucket.id;
 export const bucketArn = indexedBucket.bucket.arn;
 export const tableName = indexedBucket.table.name;
 export const tableArn = indexedBucket.table.arn;
+export const roleArn = indexedBucket.role.arn;

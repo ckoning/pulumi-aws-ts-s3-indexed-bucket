@@ -8,6 +8,7 @@ import * as aws from '@pulumi/aws';
 export class IndexedS3Bucket extends pulumi.ComponentResource {
   readonly bucket: aws.s3.Bucket;
   readonly table: aws.dynamodb.Table;
+  readonly role: aws.iam.Role;
 
   /**
    * Create a S3 bucket to contain the user data
@@ -83,6 +84,102 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
   }
 
   /**
+   * Create IAM role defining execution privileges for Lambda function
+   *
+   * @param {string} functionName
+   * @param {string} tableName
+   * @param {any} awsctx
+   * @returns aws.iam.Role
+   */
+  protected createRole(
+    functionName: string,
+    tableName: string,
+    awsctx: any,
+  ): aws.iam.Role {
+    // Define permissions for Lambda function
+    const executionPolicyPermissions = {
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Effect: 'Allow',
+          Action: 'logs:CreateLogGroup',
+          Resource: 'arn:aws:logs:*:*:*',
+        },
+        {
+          Effect: 'Allow',
+          Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+          Resource: ['arn:aws:logs:*:*:*'],
+        },
+        {
+          Effect: 'Allow',
+          Action: ['s3:GetObject'],
+          Resource: 'arn:aws:s3:::*/*',
+        },
+        {
+          Effect: 'Allow',
+          Action: [
+            'dynamodb:GetItem',
+            'dynamodb:Query',
+            'dynamodb:Scan',
+            'dynamodb:PutItem',
+            'dynamodb:UpdateItem',
+            'dynamodb:DeleteItem',
+          ],
+          Resource: `arn:aws:dynamodb:${awsctx.region}:${awsctx.accountId}:table/${tableName}`,
+        },
+      ],
+    };
+
+    // Create IAM policy for Lambda function execution role
+    const executionPolicy = new aws.iam.Policy(
+      `${functionName}-policy`,
+      {
+        name: `${functionName}-policy`,
+        path: '/',
+        description: `Execution permissions for lambda function ${functionName}`,
+        policy: JSON.stringify(executionPolicyPermissions),
+      },
+      { parent: this },
+    );
+
+    // Define trust policy for Lambda function execution role
+    const trustPolicy = {
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Action: 'sts:AssumeRole',
+          Effect: 'Allow',
+          Principal: {
+            Service: 'lambda.amazonaws.com',
+          },
+        },
+      ],
+    };
+
+    // Create Lamdba function execution role
+    const executionRole = new aws.iam.Role(
+      `${functionName}-role`,
+      {
+        name: `${functionName}-role`,
+        assumeRolePolicy: JSON.stringify(trustPolicy),
+      },
+      { parent: this },
+    );
+
+    // Attach policy to Lambda function exection role
+    const executionRolePolicyAttachment = new aws.iam.RolePolicyAttachment(
+      `${functionName}-role`,
+      {
+        role: executionRole.name,
+        policyArn: executionPolicy.arn,
+      },
+      { parent: this },
+    );
+
+    return executionRole;
+  }
+
+  /**
    * Constructor for `IndexedS3Bucket` component
    *
    * @param {string} bucketName the name of the S3 bucket to be used in resource creation
@@ -104,12 +201,17 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
     const tableName = `${bucketName}-index`;
     this.table = this.createTable(tableName);
 
+    // Create IAM role
+    const functionName = `${bucketName}-event-handler`;
+    this.role = this.createRole(functionName, tableName, awsctx);
+
     // Register that we are done constructing the component and define outputs
     this.registerOutputs({
       bucketArn: this.bucket.id,
       bucketName: this.bucket.arn,
       tableArn: this.table.arn,
       tableName: this.table.name,
+      roleArn: this.role.arn,
     });
   }
 }
