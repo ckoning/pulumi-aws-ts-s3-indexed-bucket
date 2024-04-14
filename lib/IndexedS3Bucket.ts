@@ -10,22 +10,23 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
   readonly table: aws.dynamodb.Table;
 
   /**
-   * Constructor for `IndexedS3Bucket` component
+   * Create a S3 bucket to contain the user data
    *
-   * @param {string} bucketName the name of the S3 bucket to be used in resource creation
-   * @param {pulumi.ComponentResourceOptions=} opts a `ComponentResource` configuration
-   * @constructor
+   * @param {string} bucketName
+   * @returns aws.s3.Bucket
    */
-  constructor(bucketName: string, opts?: pulumi.ComponentResourceOptions) {
-    // Register this component with name pkg:index:StaticWebsite
-    super('ckoning:pulumi-examples:IndexedS3Bucket', bucketName, {}, opts);
+  protected createBucket(bucketName: string): aws.s3.Bucket {
+    const bucket = new aws.s3.Bucket(bucketName, {}, { parent: this });
+    return bucket;
+  }
 
-    // Create the S3 bucket
-    this.bucket = new aws.s3.Bucket(bucketName, {}, { parent: this });
-
-    // Create DynamoDB table
-    const tableName = `${bucketName}-index`;
-    this.table = new aws.dynamodb.Table(
+  /**
+   * Create a DynamoDB table to contain the bucket content index
+   * @param {string} tableName
+   * @returns aws.dynamodb.Table
+   */
+  protected createTable(tableName: string): aws.dynamodb.Table {
+    const table = new aws.dynamodb.Table(
       tableName,
       {
         name: tableName,
@@ -78,6 +79,26 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
       },
       { parent: this },
     );
+    return table;
+  }
+
+  /**
+   * Constructor for `IndexedS3Bucket` component
+   *
+   * @param {string} bucketName the name of the S3 bucket to be used in resource creation
+   * @param {pulumi.ComponentResourceOptions=} opts a `ComponentResource` configuration
+   * @constructor
+   */
+  constructor(bucketName: string, opts?: pulumi.ComponentResourceOptions) {
+    // Register this component with name pkg:index:StaticWebsite
+    super('ckoning:pulumi-examples:IndexedS3Bucket', bucketName, {}, opts);
+
+    // Create the S3 bucket
+    this.bucket = this.createBucket(bucketName);
+
+    // Create DynamoDB table
+    const tableName = `${bucketName}-index`;
+    this.table = this.createTable(tableName);
 
     // Register that we are done constructing the component and define outputs
     this.registerOutputs({
