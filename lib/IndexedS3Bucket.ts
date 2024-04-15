@@ -3,7 +3,8 @@
  * @license MPL-2.0
  *
  * A Pulumi ComponentResource to deploy a S3 bucket whose content is indexed into a DynamoDB table
- * using S3 bucket events and a Lambda function.
+ * using S3 bucket events and a Lambda function. The index tracks path & filename, creation date,
+ * last modified date, and filesize.
  */
 
 import * as pulumi from '@pulumi/pulumi';
@@ -73,44 +74,42 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
    * @param {any} awsctx - The AWS context information containing the account ID and region the assets are deployed in
    * @returns aws.iam.Role
    */
-  protected createRole(
-    functionName: string,
-    tableName: string,
-    awsctx: any,
-  ): aws.iam.Role {
+  protected createRole(functionName: string): aws.iam.Role {
     // Define permissions for Lambda function
-    const executionPolicyPermissions = {
-      Version: '2012-10-17',
-      Statement: [
-        {
-          Effect: 'Allow',
-          Action: 'logs:CreateLogGroup',
-          Resource: 'arn:aws:logs:*:*:*',
-        },
-        {
-          Effect: 'Allow',
-          Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
-          Resource: ['arn:aws:logs:*:*:*'],
-        },
-        {
-          Effect: 'Allow',
-          Action: ['s3:GetObject'],
-          Resource: 'arn:aws:s3:::*/*',
-        },
-        {
-          Effect: 'Allow',
-          Action: [
-            'dynamodb:GetItem',
-            'dynamodb:Query',
-            'dynamodb:Scan',
-            'dynamodb:PutItem',
-            'dynamodb:UpdateItem',
-            'dynamodb:DeleteItem',
-          ],
-          Resource: `arn:aws:dynamodb:${awsctx.region}:${awsctx.accountId}:table/${tableName}`,
-        },
-      ],
-    };
+    const executionPolicyDocument = this.table.arn.apply((arn) =>
+      JSON.stringify({
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Effect: 'Allow',
+            Action: 'logs:CreateLogGroup',
+            Resource: 'arn:aws:logs:*:*:*',
+          },
+          {
+            Effect: 'Allow',
+            Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+            Resource: ['arn:aws:logs:*:*:*'],
+          },
+          {
+            Effect: 'Allow',
+            Action: ['s3:GetObject'],
+            Resource: 'arn:aws:s3:::*/*',
+          },
+          {
+            Effect: 'Allow',
+            Action: [
+              'dynamodb:GetItem',
+              'dynamodb:Query',
+              'dynamodb:Scan',
+              'dynamodb:PutItem',
+              'dynamodb:UpdateItem',
+              'dynamodb:DeleteItem',
+            ],
+            Resource: `${arn}`,
+          },
+        ],
+      }),
+    );
 
     // Create IAM policy for Lambda function execution role
     const executionPolicy = new aws.iam.Policy(
@@ -119,7 +118,7 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
         name: `${functionName}-policy`,
         path: '/',
         description: `Execution permissions for lambda function ${functionName}`,
-        policy: JSON.stringify(executionPolicyPermissions),
+        policy: executionPolicyDocument,
       },
       { parent: this },
     );
@@ -173,7 +172,6 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
   protected createLambda(
     functionName: string,
     bucketName: string,
-    tableName: string,
     awsctx: any,
   ): aws.lambda.Function {
     // Create the archive from the source file
@@ -204,7 +202,7 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
         },
         environment: {
           variables: {
-            DYNAMO_TABLE_ARN: `arn:aws:dynamodb:${awsctx.region}:${awsctx.accountId}:table/${tableName}`,
+            DYNAMO_TABLE_ARN: this.table.arn,
             DYNAMO_TABLE_REGION: awsctx.region,
           },
         },
@@ -272,15 +270,10 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
     this.table = this.createTable(tableName);
 
     // Create IAM role
-    this.role = this.createRole(functionName, tableName, awsctx);
+    this.role = this.createRole(functionName);
 
     // Create Lambda function
-    this.lambda = this.createLambda(
-      functionName,
-      bucketName,
-      tableName,
-      awsctx,
-    );
+    this.lambda = this.createLambda(functionName, bucketName, awsctx);
 
     // Register that we are done constructing the component and define outputs
     this.registerOutputs({
