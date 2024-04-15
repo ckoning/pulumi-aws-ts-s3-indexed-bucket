@@ -1,11 +1,15 @@
+/**
+ * @author Christopher Koning <christopher.koning@gmail.com>
+ * @license MPL-2.0
+ *
+ * A Pulumi ComponentResource to deploy a S3 bucket whose content is indexed into a DynamoDB table
+ * using S3 bucket events and a Lambda function.
+ */
+
 import * as pulumi from '@pulumi/pulumi';
 import * as aws from '@pulumi/aws';
 import * as archive from '@pulumi/archive';
 
-/**
- * A Pulumi ComponentResource to deploy a S3 bucket whose content is indexed into a DynamoDB table
- * using S3 bucket events and a Lambda function.
- */
 export class IndexedS3Bucket extends pulumi.ComponentResource {
   readonly bucket: aws.s3.Bucket;
   readonly table: aws.dynamodb.Table;
