@@ -11,6 +11,7 @@
 import { S3 } from '@aws-sdk/client-s3'
 import {
     DynamoDBClient,
+    GetItemCommand,
     PutItemCommand,
     DeleteItemCommand
 } from '@aws-sdk/client-dynamodb'
@@ -33,6 +34,135 @@ const ddb = new DynamoDBClient({
 
 
 /**
+ * Check to see if a filename exists in the database, and return current entry data if present
+ *
+ * @param {string} filename - Full path and filename of the entry to search for
+ * @returns
+ * @async
+ */
+const getItem = async (filename) => {
+  console.info(`Check for existing file ${filename}`)
+
+  // Look for an existing entry for the given filename
+  const input = {
+    "TableName": tableName,
+    "Key": {
+      "filename": {
+        "S": filename
+      },
+    }
+  }
+  console.debug(input)
+  const response = await ddb.send(new GetItemCommand(input))
+  console.debug(response)
+
+  // Check for a hit, and clean up the data if entry found
+  const fileExists = ( 'Item' in response ) ? true : false
+  let data = null
+  if (fileExists) {
+    const item = response.Item
+    data = {
+      filename: item.filename.S,
+      created: item.created.N,
+      size: item.size.N,
+      last_modified: item.last_modified.N,
+    }
+  }
+
+  // Return result
+  const result = {
+    fileExists,
+    data
+  }
+
+  return result
+}
+
+
+
+/**
+ * Create an entry in the database for a newly uploaded file
+ *
+ * @param {string} filename - Full path and filename of the database entry to create
+ * @param {number} filesize - Size of the new file in bytes
+ * @async
+ */
+const createItem = async (filename, filesize) => {
+    console.info(`Create item ${filename} in database`)
+
+    // Use PutItemCommand to create update an object in the DynamoDB table
+    // See https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/dynamodb/command/PutItemCommand
+    //
+    // DynamoDB Client requires that numeric values be transmitted
+    // as strings for interoperability between languages.
+    // See https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_AttributeValue.html
+    const input = {
+      "TableName": tableName,
+      "Item": {
+          "filename": {
+            "S": filename
+          },
+          "size": {
+            "N": `${filesize}`
+          },
+          "created": {
+            "N": `${Date.now()}`
+          },
+          "last_modified": {
+            "N": `${Date.now()}`
+          }
+      },
+      "ReturnValues": "NONE"
+  }
+  console.debug(input)
+  const response = await ddb.send(new PutItemCommand(input))
+  console.debug(response)
+}
+
+
+
+/**
+ * Update an existing entry in the database for a modified file
+ *
+ * @param {string} filename - Full path and filename for the database entry to update
+ * @param {string} filesize - Size of the updated file in bytes
+ * @param {object} data - Existing entry data for file
+ */
+const updateItem = async (filename, filesize, data) => {
+    console.info(`Update item ${filename} in database`)
+
+    // Use PutItemCommand to create update an object in the DynamoDB table
+    // See https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/dynamodb/command/PutItemCommand
+    //
+    // DynamoDB Client requires that numeric values be transmitted
+    // as strings for interoperability between languages.
+    // See https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_AttributeValue.html
+    const input = {
+      "TableName": tableName,
+      "Item": {
+          "filename": {
+            "S": filename
+          },
+          "size": {
+            "N": `${filesize}`
+          },
+          "created": {
+            "N": `${data.created}`
+          },
+          "last_modified": {
+            "N": `${Date.now()}`
+          }
+      },
+      "ReturnValues": "NONE"
+  }
+  console.debug(input)
+  const response = await ddb.send(new PutItemCommand(input))
+  console.debug(response)
+}
+
+
+
+/**
  * Upsert filename entry into DynamoDB table
  *
  * @param {string} file - The S3 bucket key (filename) to be created/updated
@@ -41,34 +171,19 @@ const ddb = new DynamoDBClient({
  */
 const handleUpload = async (filename, filesize) => {
     console.info(`Upsert ${filename} into database`)
-    // Use PutItemCommand to create or update an object in the DynamoDB table
-    // See https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/dynamodb/command/PutItemCommand
-    //
-    // DynamoDB Client requires that numeric values be transmitted
-    // as strings for interoperability between languages.
-    // See https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_AttributeValue.html
-    const input = {
-        "TableName": tableName,
-        "Item": {
-            "filename": {
-              "S": filename
-            },
-            "size": {
-              "N": `${filesize}`
-            },
-            "created": {
-              "N": `${Date.now()}`
-            },
-            "last_modified": {
-              "N": `${Date.now()}`
-            }
-        },
-        "ReturnValues": "NONE"
+
+    // Check to see if the item exists in the database already
+    const {fileExists, data} = await getItem(filename)
+    if(!fileExists) {
+      // Create new entry for new files
+      await createItem(filename, filesize)
+    } else {
+      // Update entry for existing files
+      await updateItem(filename, filesize, data)
     }
-    console.debug(input)
-    const response = await ddb.send(new PutItemCommand(input))
-    console.debug(response)
 }
+
+
 
 /**
  * Remove filename entry from DynamoDB table
@@ -78,6 +193,8 @@ const handleUpload = async (filename, filesize) => {
  */
 const handleDelete = async (filename) => {
     console.info(`Delete ${filename} from database`)
+
+    // Delete any existing entrise for the filename
     const input = {
         "TableName": tableName,
         "Key": {
