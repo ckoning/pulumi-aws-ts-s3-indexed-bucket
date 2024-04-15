@@ -34,39 +34,15 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
       {
         name: tableName,
         // Attribute definitions
+        // Note: only define attributes that are going to be indexed
         attributes: [
           {
             name: 'filename',
             type: 'S',
           },
-          {
-            name: 'size',
-            type: 'N',
-          },
-          {
-            name: 'created',
-            type: 'N',
-          },
-          {
-            name: 'last_modified',
-            type: 'N',
-          },
         ],
         // Index settings
         hashKey: 'filename',
-        rangeKey: 'created',
-        localSecondaryIndexes: [
-          {
-            name: 'size',
-            projectionType: 'ALL',
-            rangeKey: 'size',
-          },
-          {
-            name: 'last_modified',
-            projectionType: 'ALL',
-            rangeKey: 'last_modified',
-          },
-        ],
         // Data durability settings
         deletionProtectionEnabled: true,
         pointInTimeRecovery: {
