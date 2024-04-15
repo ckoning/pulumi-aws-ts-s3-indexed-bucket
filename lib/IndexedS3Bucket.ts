@@ -39,7 +39,25 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
    * @returns aws.s3.Bucket
    */
   protected createBucket(): aws.s3.Bucket {
-    const bucket = new aws.s3.Bucket(this.bucketName, {}, { parent: this });
+    const bucket = new aws.s3.Bucket(
+      this.bucketName,
+      {
+        bucket: this.bucketName,
+        acl: aws.s3.CannedAcl.Private,
+        versioning: {
+          enabled: true,
+        },
+        serverSideEncryptionConfiguration: {
+          rule: {
+            bucketKeyEnabled: true,
+            applyServerSideEncryptionByDefault: {
+              sseAlgorithm: 'aws:kms',
+            },
+          },
+        },
+      },
+      { parent: this },
+    );
     return bucket;
   }
 
