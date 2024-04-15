@@ -12,32 +12,47 @@ import * as aws from '@pulumi/aws';
 import * as archive from '@pulumi/archive';
 
 export class IndexedS3Bucket extends pulumi.ComponentResource {
+  /** S3 bucket name */
+  protected readonly bucketName: string;
+
+  /** Lambda function name */
+  protected readonly functionName: string;
+
+  /** DynamoDB table name */
+  protected readonly tableName: string;
+
+  /** S3 bucket resource */
   readonly bucket: aws.s3.Bucket;
-  readonly table: aws.dynamodb.Table;
-  readonly role: aws.iam.Role;
+
+  /** Lambda function resource */
   readonly lambda: aws.lambda.Function;
+
+  /** Lambda execution IAM role resource */
+  readonly role: aws.iam.Role;
+
+  /** DynamoDB table resource */
+  readonly table: aws.dynamodb.Table;
 
   /**
    * Create a S3 bucket to contain the user data
    *
-   * @param {string} bucketName - The name of the S3 bucket to be created
    * @returns aws.s3.Bucket
    */
-  protected createBucket(bucketName: string): aws.s3.Bucket {
-    const bucket = new aws.s3.Bucket(bucketName, {}, { parent: this });
+  protected createBucket(): aws.s3.Bucket {
+    const bucket = new aws.s3.Bucket(this.bucketName, {}, { parent: this });
     return bucket;
   }
 
   /**
    * Create a DynamoDB table to contain the bucket content index
-   * @param {string} tableName - The name of the DynamoDB table to be created
+   *
    * @returns aws.dynamodb.Table
    */
-  protected createTable(tableName: string): aws.dynamodb.Table {
+  protected createTable(): aws.dynamodb.Table {
     const table = new aws.dynamodb.Table(
-      tableName,
+      this.tableName,
       {
-        name: tableName,
+        name: this.tableName,
         // Attribute definitions
         // Note: only define attributes that are going to be indexed
         attributes: [
@@ -69,12 +84,9 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
   /**
    * Create IAM role defining execution privileges for Lambda function
    *
-   * @param {string} functionName - Name of the Lambda function the IAM role will be assumed by
-   * @param {string} tableName - Name of the DynamoDB table the Lambda function is allowed to read/write to/from
-   * @param {any} awsctx - The AWS context information containing the account ID and region the assets are deployed in
    * @returns aws.iam.Role
    */
-  protected createRole(functionName: string): aws.iam.Role {
+  protected createRole(): aws.iam.Role {
     // Define permissions for Lambda function
     const executionPolicyDocument = this.table.arn.apply((arn) =>
       JSON.stringify({
@@ -113,11 +125,11 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
 
     // Create IAM policy for Lambda function execution role
     const executionPolicy = new aws.iam.Policy(
-      `${functionName}-policy`,
+      `${this.functionName}-policy`,
       {
-        name: `${functionName}-policy`,
+        name: `${this.functionName}-policy`,
         path: '/',
-        description: `Execution permissions for lambda function ${functionName}`,
+        description: `Execution permissions for lambda function ${this.functionName}`,
         policy: executionPolicyDocument,
       },
       { parent: this },
@@ -139,9 +151,9 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
 
     // Create Lamdba function execution role
     const executionRole = new aws.iam.Role(
-      `${functionName}-role`,
+      `${this.functionName}-role`,
       {
-        name: `${functionName}-role`,
+        name: `${this.functionName}-role`,
         assumeRolePolicy: JSON.stringify(trustPolicy),
       },
       { parent: this },
@@ -149,7 +161,7 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
 
     // Attach policy to Lambda function exection role
     const executionRolePolicyAttachment = new aws.iam.RolePolicyAttachment(
-      `${functionName}-role`,
+      `${this.functionName}-role`,
       {
         role: executionRole.name,
         policyArn: executionPolicy.arn,
@@ -163,17 +175,9 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
   /**
    * Create Lambda function implementing S3 event handler
    *
-   * @param functionName - Name of the Lambda function to be created
-   * @param bucketName - Name of the S3 bucket the Lambda function will handle events for
-   * @param tableName - Name of the DynamoDB table the Lambda function will read/write to/from
-   * @param {any} awsctx - The AWS context information containing the account ID and region the assets are deployed in
    * @returns aws.lambda.Function
    */
-  protected createLambda(
-    functionName: string,
-    bucketName: string,
-    awsctx: any,
-  ): aws.lambda.Function {
+  protected createLambda(): aws.lambda.Function {
     // Create the archive from the source file
     const lambdaSource = archive.getFile({
       type: 'zip',
@@ -181,12 +185,15 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
       outputPath: './src/lambda/lambda_function_payload.zip',
     });
 
+    // Get the current region
+    const region = aws.getRegionOutput();
+
     // Create the Lambda function
     const lambda = new aws.lambda.Function(
-      functionName,
+      this.functionName,
       {
-        name: functionName,
-        description: `S3 event processing function for bucket ${bucketName}`,
+        name: this.functionName,
+        description: `S3 event processing function for bucket ${this.bucketName}`,
         code: new pulumi.asset.FileArchive(
           './src/lambda/lambda_function_payload.zip',
         ),
@@ -203,7 +210,7 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
         environment: {
           variables: {
             DYNAMO_TABLE_ARN: this.table.arn,
-            DYNAMO_TABLE_REGION: awsctx.region,
+            DYNAMO_TABLE_REGION: region.id.apply((id) => id),
           },
         },
       },
@@ -212,7 +219,7 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
 
     // Create bucket permission allowing S3 bucket to invoke Lambda function
     const bucketPermission = new aws.lambda.Permission(
-      `${bucketName}-${functionName}-permission`,
+      `${this.bucketName}-${this.functionName}-permission`,
       {
         statementId: 'AllowExecutionFromS3Bucket',
         action: 'lambda:InvokeFunction',
@@ -225,7 +232,7 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
 
     // Create bucket notification for all upload and delete events
     const bucketNotification = new aws.s3.BucketNotification(
-      `${bucketName}-${functionName}-notification`,
+      `${this.bucketName}-${this.functionName}-notification`,
       {
         bucket: this.bucket.id,
         lambdaFunctions: [
@@ -251,29 +258,26 @@ export class IndexedS3Bucket extends pulumi.ComponentResource {
    * @param {pulumi.ComponentResourceOptions=} opts a `ComponentResource` configuration
    * @constructor
    */
-  constructor(
-    bucketName: string,
-    awsctx: any,
-    opts?: pulumi.ComponentResourceOptions,
-  ) {
+  constructor(bucketName: string, opts?: pulumi.ComponentResourceOptions) {
     // Register this component with name pkg:index:StaticWebsite
     super('ckoning:pulumi-examples:IndexedS3Bucket', bucketName, {}, opts);
 
     // Define resource names based on user provided bucket name
-    const tableName = `${bucketName}-index`;
-    const functionName = `${bucketName}-event-handler`;
+    this.bucketName = bucketName;
+    this.tableName = `${bucketName}-index`;
+    this.functionName = `${bucketName}-event-handler`;
 
     // Create the S3 bucket
-    this.bucket = this.createBucket(bucketName);
+    this.bucket = this.createBucket();
 
     // Create DynamoDB table
-    this.table = this.createTable(tableName);
+    this.table = this.createTable();
 
     // Create IAM role
-    this.role = this.createRole(functionName);
+    this.role = this.createRole();
 
     // Create Lambda function
-    this.lambda = this.createLambda(functionName, bucketName, awsctx);
+    this.lambda = this.createLambda();
 
     // Register that we are done constructing the component and define outputs
     this.registerOutputs({
