@@ -21,6 +21,7 @@
     "typescript-eslint": "^7.6.0"
   },
   "dependencies": {
+    "@pulumi/archive": "^0.0.5",
     "@pulumi/aws": "^6.30.0",
     "@pulumi/pulumi": "^3.112.0",
     "ts-node": "^10.9.2"

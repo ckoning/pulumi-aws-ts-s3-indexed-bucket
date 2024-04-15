@@ -131,3 +131,6 @@ dist
 
 # GitGuardian history cache
 .cache_ggshield
+
+# Zip archives
+**/*.zip
