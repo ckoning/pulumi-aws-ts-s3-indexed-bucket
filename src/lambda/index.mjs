@@ -122,6 +122,10 @@ const handleDelete = async (filename) => {
      */
     try {
         switch(true) {
+            // Folder event
+            case key.endsWith("/"):
+                // Skip all folders, all files are indexed by full path
+                break
             // Upload event
             case eventName.startsWith("ObjectCreated"):
                 await handleUpload(key, size)
